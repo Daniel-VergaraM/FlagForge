@@ -43,6 +43,3 @@ pnpm dev:evaluator # Puerto 3002
 - Health API: GET http://localhost:3001/health
 - Health Evaluator: GET http://localhost:3002/health
 
-## Issues / Roadmap
-
-Ver `docs/issues/` para el desglose completo en slices verticales.
