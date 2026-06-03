@@ -1,4 +1,27 @@
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class FlagRuleDto {
+  @IsString()
+  @IsNotEmpty()
+  attribute: string;
+
+  @IsIn(['eq', 'neq', 'gt', 'lt', 'in', 'contains'])
+  operator: string;
+
+  @IsNotEmpty()
+  value: unknown;
+}
+
+export class FlagVariantDto {
+  @IsNotEmpty()
+  value: unknown;
+
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  weight: number;
+}
 
 export class CreateFlagDto {
   @IsString()
@@ -28,7 +51,14 @@ export class CreateFlagDto {
   tags?: string[];
 
   @IsOptional()
-  rules?: Record<string, unknown>;
+  @ValidateNested({ each: true })
+  @Type(() => FlagRuleDto)
+  rules?: FlagRuleDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => FlagVariantDto)
+  variants?: FlagVariantDto[];
 
   @IsInt()
   @Min(0)

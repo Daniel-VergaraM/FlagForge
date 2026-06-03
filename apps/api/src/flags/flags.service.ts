@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
+import { MessagingService } from '../messaging/messaging.service';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 
@@ -12,6 +13,7 @@ export class FlagsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private messaging: MessagingService,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL') || 'redis://localhost:6379');
   }
@@ -28,6 +30,12 @@ export class FlagsService {
         tags: dto.tags ?? [],
         rules: (dto.rules ?? null) as any,
         rolloutPercentage: dto.rolloutPercentage ?? 100,
+        variants: {
+          create: (dto.variants ?? []).map(v => ({
+            value: v.value as any,
+            weight: v.weight,
+          })),
+        },
       },
       include: { environment: true, variants: true },
     });
@@ -61,12 +69,31 @@ export class FlagsService {
 
   async update(id: string, dto: UpdateFlagDto) {
     await this.findOne(id);
+
+    const data: any = {
+      name: dto.name,
+      description: dto.description,
+      type: dto.type,
+      enabled: dto.enabled,
+      tags: dto.tags,
+      rules: dto.rules ? (dto.rules as any) : undefined,
+      rolloutPercentage: dto.rolloutPercentage,
+    };
+
+    // If variants are provided, replace them
+    if (dto.variants !== undefined) {
+      await this.prisma.flagVariant.deleteMany({ where: { flagId: id } });
+      data.variants = {
+        create: dto.variants.map(v => ({
+          value: v.value as any,
+          weight: v.weight,
+        })),
+      };
+    }
+
     const flag = await this.prisma.flag.update({
       where: { id },
-      data: {
-        ...dto,
-        rules: dto.rules ? (dto.rules as any) : undefined,
-      },
+      data,
       include: { environment: true, variants: true },
     });
     await this.writeFlagToCache(flag as any);
@@ -92,12 +119,12 @@ export class FlagsService {
       variants: (flag.variants || []).map((v: any) => ({ value: v.value, weight: v.weight })),
     };
     await this.redis.setex(cacheKey, 300, JSON.stringify(payload));
-    await this.redis.publish('flag:changed', JSON.stringify({ sdkKey: flag.environment.sdkKey, flagKey: flag.key }));
+    await this.messaging.publish('flag.changed', { sdkKey: flag.environment.sdkKey, flagKey: flag.key });
   }
 
   private async invalidateCache(sdkKey: string, flagKey: string) {
     const cacheKey = `flag:${sdkKey}:${flagKey}`;
     await this.redis.del(cacheKey);
-    await this.redis.publish('flag:changed', JSON.stringify({ sdkKey, flagKey }));
+    await this.messaging.publish('flag.changed', { sdkKey, flagKey });
   }
 }
