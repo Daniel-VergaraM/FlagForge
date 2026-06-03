@@ -60,7 +60,7 @@ export class FlagsService {
   }
 
   async update(id: string, dto: UpdateFlagDto) {
-    const existing = await this.findOne(id);
+    await this.findOne(id);
     const flag = await this.prisma.flag.update({
       where: { id },
       data: {
