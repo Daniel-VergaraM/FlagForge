@@ -43,4 +43,5 @@ coverage/
 *.bak
 *.tmp
 *.cache
+*-session-*
 docs/
