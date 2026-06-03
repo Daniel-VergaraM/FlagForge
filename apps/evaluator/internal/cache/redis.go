@@ -50,14 +50,19 @@ func (c *RedisCache) SetFlag(sdkKey, flagKey string, cfg *FlagConfig, ttl time.D
 	return c.client.Set(c.ctx, key, data, ttl).Err()
 }
 
+func (c *RedisCache) DeleteFlag(sdkKey, flagKey string) error {
+	key := "flag:" + sdkKey + ":" + flagKey
+	return c.client.Del(c.ctx, key).Err()
+}
+
 // FlagConfig mirrors the flag structure cached by the API
 type FlagConfig struct {
-	Key               string          `json:"key"`
-	Enabled           bool            `json:"enabled"`
-	Type              string          `json:"type"`
-	Rules             []Rule          `json:"rules,omitempty"`
-	RolloutPercentage int             `json:"rolloutPercentage"`
-	Variants          []FlagVariant   `json:"variants,omitempty"`
+	Key               string        `json:"key"`
+	Enabled           bool          `json:"enabled"`
+	Type              string        `json:"type"`
+	Rules             []Rule        `json:"rules,omitempty"`
+	RolloutPercentage int           `json:"rolloutPercentage"`
+	Variants          []FlagVariant `json:"variants,omitempty"`
 }
 
 type Rule struct {

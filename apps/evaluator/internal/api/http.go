@@ -8,6 +8,7 @@ import (
 
 	"github.com/flagforge/evaluator/internal/cache"
 	"github.com/flagforge/evaluator/internal/evaluator"
+	"github.com/flagforge/evaluator/internal/messaging"
 )
 
 type Server struct {
@@ -36,7 +37,7 @@ func NewServer(rdb *cache.RedisCache, natsAddr string) *Server {
 	app.Post("/evaluate", s.handleEvaluate)
 	app.Get("/health", s.handleHealth)
 
-	// Subscribe to flag changes via NATS (optional in MVP)
+	// Subscribe to flag changes via NATS
 	go s.subscribeNATS(natsAddr)
 
 	return s
@@ -68,6 +69,13 @@ func (s *Server) handleHealth(c *fiber.Ctx) error {
 }
 
 func (s *Server) subscribeNATS(natsAddr string) {
-	// TODO: wire NATS subscription to invalidate local hot cache if added later
-	_ = natsAddr
+	sub, err := messaging.NewNATSSubscriber(natsAddr, s.cache)
+	if err != nil {
+		log.Printf("nats subscribe init failed: %v", err)
+		return
+	}
+	defer sub.Close()
+	if err := sub.Subscribe(); err != nil {
+		log.Printf("nats subscribe error: %v", err)
+	}
 }
