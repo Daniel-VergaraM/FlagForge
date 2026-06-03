@@ -26,7 +26,7 @@ export class FlagsService {
         enabled: dto.enabled ?? false,
         environmentId: dto.environmentId,
         tags: dto.tags ?? [],
-        rules: dto.rules ?? null,
+        rules: (dto.rules ?? null) as any,
         rolloutPercentage: dto.rolloutPercentage ?? 100,
       },
       include: { environment: true, variants: true },
