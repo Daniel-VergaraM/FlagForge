@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagforge-evaluator
+  labels:
+    app: flagforge-evaluator
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: flagforge-evaluator
+  template:
+    metadata:
+      labels:
+        app: flagforge-evaluator
+    spec:
+      containers:
+        - name: evaluator
+          image: flagforge/evaluator:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: flagforge-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagforge-evaluator
+spec:
+  selector:
+    app: flagforge-evaluator
+  ports:
+    - port: 80
+      targetPort: 3002

@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  environments Environment[]
+
+  @@map("projects")
+}
+
+model Environment {
+  id        String   @id @default(cuid())
+  name      String
+  sdkKey    String   @unique @map("sdk_key")
+  projectId String   @map("project_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flags   Flag[]
+
+  @@map("environments")
+}
+
+model Flag {
+  id          String     @id @default(cuid())
+  key         String
+  name        String
+  description String?
+  type        FlagType   @default(BOOLEAN)
+  status      FlagStatus @default(ACTIVE)
+  enabled     Boolean    @default(false)
+  environmentId String   @map("environment_id")
+  rules       Json?      // Segment rules JSON
+  tags        String[]
+  rolloutPercentage Int  @default(100) @map("rollout_percentage")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  variants    FlagVariant[]
+  auditLogs   AuditLog[]
+
+  @@unique([key, environmentId])
+  @@map("flags")
+}
+
+model FlagVariant {
+  id       String @id @default(cuid())
+  flagId   String @map("flag_id")
+  value    Json
+  weight   Int    @default(0) // 0-100 for A/B distribution
+
+  flag Flag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  @@map("flag_variants")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String   @map("actor_id")
+  action    String
+  entity    String
+  entityId  String   @map("entity_id")
+  diff      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  flag Flag? @relation(fields: [entityId], references: [id], onDelete: SetNull, map: "audit_log_flag_fk")
+
+  @@map("audit_logs")
+}
+
+enum FlagType {
+  BOOLEAN
+  MULTIVARIATE
+}
+
+enum FlagStatus {
+  ACTIVE
+  ARCHIVED
+}

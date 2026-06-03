@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagforge-api
+  labels:
+    app: flagforge-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flagforge-api
+  template:
+    metadata:
+      labels:
+        app: flagforge-api
+    spec:
+      containers:
+        - name: api
+          image: flagforge/api:latest
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: flagforge-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagforge-api
+spec:
+  selector:
+    app: flagforge-api
+  ports:
+    - port: 80
+      targetPort: 3001
