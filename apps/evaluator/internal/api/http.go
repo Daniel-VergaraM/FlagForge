@@ -6,9 +6,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
-	"github.com/flagforge/evaluator/internal/cache"
-	"github.com/flagforge/evaluator/internal/evaluator"
-	"github.com/flagforge/evaluator/internal/messaging"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/cache"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/evaluator"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/messaging"
 )
 
 type Server struct {

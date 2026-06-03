@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"github.com/flagforge/evaluator/internal/cache"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/cache"
 )
 
 // NATSSubscriber listens to flag change events and invalidates the Redis cache.

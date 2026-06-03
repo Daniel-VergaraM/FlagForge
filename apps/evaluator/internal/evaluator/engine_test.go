@@ -3,7 +3,7 @@ package evaluator
 import (
 	"testing"
 
-	"github.com/flagforge/evaluator/internal/cache"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/cache"
 )
 
 func TestEvaluate_BooleanWithoutRules(t *testing.T) {

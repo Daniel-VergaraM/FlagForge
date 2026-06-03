@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/flagforge/evaluator/internal/api"
-	"github.com/flagforge/evaluator/internal/cache"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/api"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/cache"
 )
 
 func main() {

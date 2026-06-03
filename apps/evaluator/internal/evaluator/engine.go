@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flagforge/evaluator/internal/cache"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/cache"
 )
 
 // Evaluate computes flag resolution for a given context.

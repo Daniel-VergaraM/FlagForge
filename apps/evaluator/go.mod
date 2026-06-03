@@ -1,4 +1,4 @@
-module github.com/flagforge/evaluator
+module github.com/daniel-vergaram/flagforge/evaluator
 
 go 1.25.0
 
