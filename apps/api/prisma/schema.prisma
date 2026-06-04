@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole @default(VIEWER)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships ProjectMember[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
 model Project {
   id          String   @id @default(cuid())
   name        String
@@ -15,8 +29,24 @@ model Project {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   environments Environment[]
+  members      ProjectMember[]
 
   @@map("projects")
+}
+
+model ProjectMember {
+  id        String     @id @default(cuid())
+  userId    String     @map("user_id")
+  projectId String     @map("project_id")
+  role      MemberRole @default(VIEWER)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@map("project_members")
 }
 
 model Environment {
@@ -70,15 +100,33 @@ model FlagVariant {
 model AuditLog {
   id        String   @id @default(cuid())
   actorId   String   @map("actor_id")
-  action    String
-  entity    String
+  action    String   // CREATE, UPDATE, DELETE
+  entity    String   // flag, project, environment
   entityId  String   @map("entity_id")
-  diff      Json?
+  previousValue Json? @map("previous_value")
+  newValue  Json?    @map("new_value")
+  reason    String?
+  metadata  Json?    // IP, user-agent, etc.
   createdAt DateTime @default(now()) @map("created_at")
 
-  flag Flag? @relation(fields: [entityId], references: [id], onDelete: SetNull, map: "audit_log_flag_fk")
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  flag  Flag? @relation(fields: [entityId], references: [id], onDelete: SetNull, map: "audit_log_flag_fk")
 
+  @@index([entityId, createdAt])
+  @@index([actorId, createdAt])
   @@map("audit_logs")
+}
+
+enum UserRole {
+  ADMIN
+  VIEWER
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
 }
 
 enum FlagType {
