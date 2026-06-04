@@ -18,7 +18,7 @@ export type AppAbility = PureAbility<[string, AppSubjects], PrismaQuery>;
 @Injectable()
 export class CaslAbilityFactory {
   createForUser(user: User & { projectRole?: MemberRole }) {
-    const { can, cannot, build } = new AbilityBuilder<AppAbility>(createPrismaAbility);
+    const { can, build } = new AbilityBuilder<AppAbility>(createPrismaAbility);
 
     // Base permissions for all authenticated users
     can('read', 'Flag');

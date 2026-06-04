@@ -71,7 +71,10 @@ export class AuditInterceptor implements NestInterceptor {
     if (!data) return null;
     if (typeof data !== 'object') return data;
     // Remove sensitive fields
-    const { password, token, secret, ...safe } = data;
+    const safe = { ...data };
+    delete safe.password;
+    delete safe.token;
+    delete safe.secret;
     return safe;
   }
 }
