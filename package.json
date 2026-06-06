@@ -16,5 +16,15 @@
   },
   "devDependencies": {
     "pnpm": "^9.0.0"
+  },
+  "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/instrumentation-express": "^0.66.0",
+    "@opentelemetry/instrumentation-http": "^0.218.0",
+    "@opentelemetry/resources": "^2.7.1",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "@opentelemetry/sdk-trace-node": "^2.7.1",
+    "@opentelemetry/semantic-conventions": "^1.41.1"
   }
 }

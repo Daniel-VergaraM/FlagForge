@@ -2,6 +2,12 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { startTracing } from './tracing';
+
+// Start OpenTelemetry tracing before bootstrapping
+if (process.env.OTEL_ENABLED !== 'false') {
+  startTracing();
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

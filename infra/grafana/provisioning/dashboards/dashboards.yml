@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'FlagForge Dashboards'
+    orgId: 1
+    folder: 'FlagForge'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
