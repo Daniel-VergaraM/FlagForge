@@ -45,3 +45,6 @@ coverage/
 *.cache
 *-session-*
 docs/
+
+*.crt
+*.key

@@ -5,8 +5,6 @@ services:
       POSTGRES_USER: flagforge
       POSTGRES_PASSWORD: flagforge
       POSTGRES_DB: flagforge
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +17,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
@@ -34,9 +30,6 @@ services:
 
   nats:
     image: nats:2-alpine
-    ports:
-      - "4222:4222"
-      - "8222:8222"
     command: "-js -m 8222"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
@@ -50,14 +43,15 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    ports:
-      - "3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
       - DATABASE_URL=postgresql://flagforge:flagforge@postgres:5432/flagforge
       - REDIS_URL=redis://redis:6379
       - NATS_URL=nats://nats:4222
+      - OTEL_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+      - OTEL_SERVICE_NAME=flagforge-api
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,8 +72,6 @@ services:
     build:
       context: ./apps/evaluator
       dockerfile: Dockerfile
-    ports:
-      - "3002:3002"
     environment:
       - REDIS_URL=redis:6379
       - NATS_URL=nats://nats:4222
@@ -100,8 +92,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.50.0
-    ports:
-      - "9090:9090"
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -122,8 +112,6 @@ services:
 
   grafana:
     image: grafana/grafana:10.4.0
-    ports:
-      - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -132,8 +120,35 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://localhost/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     depends_on:
       - prometheus
+    networks:
+      - flagforge
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./infra/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      evaluator:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+      grafana:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - flagforge
 
