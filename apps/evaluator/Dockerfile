@@ -1,10 +1,13 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN go mod download && go build -o evaluator ./main.go
+RUN go build -o evaluator ./main.go
 
 FROM alpine:latest
 WORKDIR /app
+RUN apk --no-cache add ca-certificates wget
 COPY --from=builder /build/evaluator .
 EXPOSE 3002
 CMD ["./evaluator"]

@@ -1,0 +1,6 @@
+evaluator
+*.test
+vendor
+.git
+.gitignore
+README.md
