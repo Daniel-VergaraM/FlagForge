@@ -4,11 +4,12 @@
 
 | Servicio | URL | Credenciales |
 |----------|-----|--------------|
+| Dashboard | `https://localhost/` | next-auth demo (cualquier @flagforge.local) |
 | Swagger API Docs | `https://localhost/api/docs` | — |
 | API Base | `https://localhost/api/` | — |
 | Evaluator | `https://localhost/evaluate` | — |
 | Grafana | `https://localhost/grafana` | admin/admin |
-| Prometheus | `https://localhost/prometheus` | admin/admin (basic auth) |
+| Prometheus | `https://localhost/prometheus` | — |
 | API Metrics | `https://localhost/metrics` | — |
 | Evaluator Metrics | `https://localhost/evaluator-metrics` | — |
 | Health Check | `https://localhost/health` | — |

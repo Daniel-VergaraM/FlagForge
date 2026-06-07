@@ -36,10 +36,15 @@ pnpm dev:api      # Puerto 3001
 pnpm dev:evaluator # Puerto 3002
 ```
 
-## Endpoints principales
+## Endpoints principales (vía NGINX)
 
-- API Docs: http://localhost:3001/api/docs
-- Evaluator: POST http://localhost:3002/evaluate
-- Health API: GET http://localhost:3001/health
-- Health Evaluator: GET http://localhost:3002/health
+- **Dashboard**: https://localhost/
+- **API Docs**: https://localhost/api/docs
+- **Evaluator**: POST https://localhost/evaluate
+- **Health API**: GET https://localhost/api/health
+- **Grafana**: https://localhost/grafana
+- **Prometheus**: https://localhost/prometheus
+
+> Solo los puertos 80/443 están expuestos al exterior; todos los servicios internos
+> se comunican a través del proxy NGINX.
 

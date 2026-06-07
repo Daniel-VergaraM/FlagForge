@@ -127,6 +127,23 @@ services:
     networks:
       - flagforge
 
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - API_BASE_URL=http://api:3001
+      - NEXTAUTH_SECRET=flagforge-local-secret-not-for-production
+      - NEXTAUTH_URL=https://localhost
+      - NEXTAUTH_TRUST_HOST=true
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - flagforge
+
   nginx:
     image: nginx:alpine
     ports:
@@ -140,6 +157,8 @@ services:
         condition: service_healthy
       evaluator:
         condition: service_healthy
+      web:
+        condition: service_started
       prometheus:
         condition: service_started
       grafana:

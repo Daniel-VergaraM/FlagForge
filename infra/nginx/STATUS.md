@@ -7,6 +7,7 @@ Proxy inverso NGINX implementado y operativo. Todos los servicios internos se co
 
 | Servicio | URL | Estado |
 |----------|-----|--------|
+| Dashboard | `https://localhost/` | ✅ 200 |
 | Swagger API Docs | `https://localhost/api/docs` | ✅ 200 |
 | API Health | `https://localhost/api/health` | ✅ OK |
 | Evaluator | `https://localhost/evaluate` | ✅ OK |
