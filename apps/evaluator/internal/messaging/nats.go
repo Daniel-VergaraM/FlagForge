@@ -7,12 +7,14 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/daniel-vergaram/flagforge/evaluator/internal/cache"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/stream"
 )
 
 // NATSSubscriber listens to flag change events and invalidates the Redis cache.
 type NATSSubscriber struct {
-	nc    *nats.Conn
-	cache *cache.RedisCache
+	nc     *nats.Conn
+	cache  *cache.RedisCache
+	stream *stream.Manager
 }
 
 // FlagChangedEvent represents the NATS message payload.
@@ -22,12 +24,12 @@ type FlagChangedEvent struct {
 }
 
 // NewNATSSubscriber connects to NATS and returns a subscriber instance.
-func NewNATSSubscriber(addr string, c *cache.RedisCache) (*NATSSubscriber, error) {
+func NewNATSSubscriber(addr string, c *cache.RedisCache, mgr *stream.Manager) (*NATSSubscriber, error) {
 	nc, err := nats.Connect(addr, nats.Timeout(5*time.Second), nats.ReconnectWait(2*time.Second))
 	if err != nil {
 		return nil, err
 	}
-	return &NATSSubscriber{nc: nc, cache: c}, nil
+	return &NATSSubscriber{nc: nc, cache: c, stream: mgr}, nil
 }
 
 // Subscribe starts the flag.changed subscription. Blocks; call in a goroutine.
@@ -43,6 +45,15 @@ func (s *NATSSubscriber) Subscribe() error {
 			return
 		}
 		log.Printf("nats: invalidated cache for %s/%s", evt.SDKKey, evt.FlagKey)
+
+		// Broadcast SSE event to all connected clients for this SDK key
+		if s.stream != nil {
+			s.stream.Broadcast(evt.SDKKey, stream.Event{
+				Type:    "flag.changed",
+				SDKKey:  evt.SDKKey,
+				FlagKey: evt.FlagKey,
+			})
+		}
 	})
 	if err != nil {
 		return err

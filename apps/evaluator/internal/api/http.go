@@ -15,6 +15,7 @@ import (
 	"github.com/daniel-vergaram/flagforge/evaluator/internal/cache"
 	"github.com/daniel-vergaram/flagforge/evaluator/internal/evaluator"
 	"github.com/daniel-vergaram/flagforge/evaluator/internal/messaging"
+	"github.com/daniel-vergaram/flagforge/evaluator/internal/stream"
 )
 
 var (
@@ -41,8 +42,9 @@ var (
 )
 
 type Server struct {
-	app   *fiber.App
-	cache *cache.RedisCache
+	app    *fiber.App
+	cache  *cache.RedisCache
+	stream *stream.Manager
 }
 
 type EvaluateRequest struct {
@@ -62,12 +64,14 @@ func NewServer(rdb *cache.RedisCache, natsAddr string) *Server {
 	})
 	app.Use(recover.New())
 
-	s := &Server{app: app, cache: rdb}
+	streamMgr := stream.NewManager()
+	s := &Server{app: app, cache: rdb, stream: streamMgr}
 	app.Post("/evaluate", s.handleEvaluate)
 	app.Get("/health", s.handleHealth)
 	app.Get("/metrics", adaptor(promhttp.Handler()))
+	app.Get("/evaluate/stream", s.stream.Handler())
 
-	// Subscribe to flag changes via NATS
+	// Subscribe to flag changes via NATS (pass stream manager for SSE broadcast)
 	go s.subscribeNATS(natsAddr)
 
 	return s
@@ -118,7 +122,7 @@ func (s *Server) handleHealth(c *fiber.Ctx) error {
 }
 
 func (s *Server) subscribeNATS(natsAddr string) {
-	sub, err := messaging.NewNATSSubscriber(natsAddr, s.cache)
+	sub, err := messaging.NewNATSSubscriber(natsAddr, s.cache, s.stream)
 	if err != nil {
 		log.Printf("nats subscribe init failed: %v", err)
 		return
