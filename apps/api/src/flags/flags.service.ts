@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { UpdateFlagDto } from './dto/update-flag.dto';
 import { MessagingService } from '../messaging/messaging.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 
@@ -14,6 +15,7 @@ export class FlagsService {
     private prisma: PrismaService,
     private config: ConfigService,
     private messaging: MessagingService,
+    private webhooks: WebhooksService,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL') || 'redis://localhost:6379');
   }
@@ -40,6 +42,7 @@ export class FlagsService {
       include: { environment: true, variants: true },
     });
     await this.writeFlagToCache(flag as any);
+    await this.webhooks.trigger(flag.environment.projectId, 'flag.created', flag);
     return flag;
   }
 
@@ -97,6 +100,7 @@ export class FlagsService {
       include: { environment: true, variants: true },
     });
     await this.writeFlagToCache(flag as any);
+    await this.webhooks.trigger(flag.environment.projectId, 'flag.updated', flag);
     return flag;
   }
 
@@ -104,6 +108,7 @@ export class FlagsService {
     const flag = await this.findOne(id);
     await this.prisma.flag.delete({ where: { id } });
     await this.invalidateCache(flag.environment.sdkKey, flag.key);
+    await this.webhooks.trigger(flag.environment.projectId, 'flag.deleted', flag);
     return flag;
   }
 

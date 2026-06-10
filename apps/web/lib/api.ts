@@ -1,5 +1,11 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+export interface FlagRule {
+  attribute: string;
+  operator: 'eq' | 'neq' | 'gt' | 'lt' | 'contains' | 'in';
+  value: unknown;
+}
+
 export interface Flag {
   id: string;
   key: string;
@@ -9,6 +15,7 @@ export interface Flag {
   environment: string;
   createdAt: string;
   updatedAt: string;
+  rules?: FlagRule[];
 }
 
 export interface AuditEntry {
@@ -19,6 +26,16 @@ export interface AuditEntry {
   actorId: string;
   timestamp: string;
   details?: Record<string, unknown>;
+}
+
+export interface ApiKey {
+  id: string;
+  key: string;
+  name?: string;
+  environmentId: string;
+  lastUsedAt?: string;
+  createdAt: string;
+  revokedAt?: string;
 }
 
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
@@ -48,5 +65,12 @@ export const api = {
     list: (entityId?: string) =>
       fetchJson<AuditEntry[]>(`/flags/${entityId || ''}/audit`.replace('//', '/').replace('/audit', `/${entityId}/audit`)),
     byFlag: (flagId: string) => fetchJson<AuditEntry[]>(`/flags/${flagId}/audit`),
+  },
+  apiKeys: {
+    list: () => fetchJson<ApiKey[]>('/api-keys'),
+    create: (data: { environmentId: string; name?: string }) =>
+      fetchJson<ApiKey>('/api-keys', { method: 'POST', body: JSON.stringify(data) }),
+    revoke: (id: string) =>
+      fetch(`/api-keys/${id}`, { method: 'DELETE' }).then((r) => r.ok),
   },
 };

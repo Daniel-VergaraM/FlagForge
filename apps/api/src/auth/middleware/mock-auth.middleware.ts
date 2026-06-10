@@ -1,10 +1,41 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { PrismaService } from '../../prisma/prisma.service';
 import { MemberRole } from '@prisma/client';
 
 @Injectable()
 export class MockAuthMiddleware implements NestMiddleware {
-  use(req: Request, res: Response, next: NextFunction) {
+  constructor(private prisma: PrismaService) {}
+
+  async use(req: Request, res: Response, next: NextFunction) {
+    const apiKeyHeader = req.headers['x-api-key'] as string;
+
+    if (apiKeyHeader) {
+      const apiKey = await this.prisma.apiKey.findUnique({
+        where: { key: apiKeyHeader, revokedAt: null },
+        include: { environment: true },
+      });
+
+      if (apiKey) {
+        await this.prisma.apiKey.update({
+          where: { id: apiKey.id },
+          data: { lastUsedAt: new Date() },
+        });
+
+        (req as any).user = {
+          id: 'system',
+          email: 'system@flagforge.local',
+          name: 'System',
+          role: 'system',
+          projectRole: MemberRole.OWNER,
+          apiKeyId: apiKey.id,
+          environmentId: apiKey.environmentId,
+        };
+
+        return next();
+      }
+    }
+
     // For development: simulate authenticated user
     // In production, this would validate JWT/OAuth2 token
     const role = (req.headers['x-role'] as string) || 'viewer';

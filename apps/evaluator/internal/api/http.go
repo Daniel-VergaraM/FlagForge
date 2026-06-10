@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -41,10 +42,48 @@ var (
 	})
 )
 
+type rateLimitEntry struct {
+	count     int
+	windowEnd time.Time
+}
+
+type rateLimiter struct {
+	mu   sync.RWMutex
+	ips  map[string]*rateLimitEntry
+}
+
+func newRateLimiter() *rateLimiter {
+	return &rateLimiter{
+		ips: make(map[string]*rateLimitEntry),
+	}
+}
+
+func (rl *rateLimiter) allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	entry, exists := rl.ips[ip]
+	if !exists || now.After(entry.windowEnd) {
+		rl.ips[ip] = &rateLimitEntry{
+			count:     1,
+			windowEnd: now.Add(time.Minute),
+		}
+		return true
+	}
+
+	entry.count++
+	if entry.count > 1000 {
+		return false
+	}
+	return true
+}
+
 type Server struct {
-	app    *fiber.App
-	cache  *cache.RedisCache
-	stream *stream.Manager
+	app     *fiber.App
+	cache   *cache.RedisCache
+	stream  *stream.Manager
+	limiter *rateLimiter
 }
 
 type EvaluateRequest struct {
@@ -65,7 +104,7 @@ func NewServer(rdb *cache.RedisCache, natsAddr string) *Server {
 	app.Use(recover.New())
 
 	streamMgr := stream.NewManager()
-	s := &Server{app: app, cache: rdb, stream: streamMgr}
+	s := &Server{app: app, cache: rdb, stream: streamMgr, limiter: newRateLimiter()}
 	app.Post("/evaluate", s.handleEvaluate)
 	app.Get("/health", s.handleHealth)
 	app.Get("/metrics", adaptor(promhttp.Handler()))
@@ -84,6 +123,14 @@ func (s *Server) Listen(addr string) error {
 func (s *Server) handleEvaluate(c *fiber.Ctx) error {
 	start := time.Now()
 	status := "200"
+
+	ip := c.IP()
+	if !s.limiter.allow(ip) {
+		status = "429"
+		evalRequestsTotal.WithLabelValues(status).Inc()
+		evalRequestDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "Too Many Requests"})
+	}
 
 	var req EvaluateRequest
 	if err := c.BodyParser(&req); err != nil {

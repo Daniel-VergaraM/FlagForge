@@ -30,6 +30,7 @@ model Project {
 
   environments Environment[]
   members      ProjectMember[]
+  webhooks     Webhook[]
 
   @@map("projects")
 }
@@ -59,6 +60,7 @@ model Environment {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   flags   Flag[]
+  apiKeys ApiKey[]
 
   @@map("environments")
 }
@@ -95,6 +97,35 @@ model FlagVariant {
   flag Flag @relation(fields: [flagId], references: [id], onDelete: Cascade)
 
   @@map("flag_variants")
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  url       String
+  secret    String?  // HMAC signature
+  events    String[] // ["flag.created", "flag.updated", "flag.deleted"]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("webhooks")
+}
+
+model ApiKey {
+  id            String   @id @default(cuid())
+  environmentId String   @map("environment_id")
+  key           String   @unique
+  name          String?
+  lastUsedAt    DateTime? @map("last_used_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  revokedAt     DateTime? @map("revoked_at")
+
+  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
 }
 
 model AuditLog {
