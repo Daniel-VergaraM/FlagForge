@@ -1,0 +1,21 @@
+apiVersion: v2
+name: flagforge
+description: >-
+  Open-source feature flag platform - NestJS management API, a Go
+  sub-50ms evaluator, real-time streaming (NATS + SSE), Postgres, Redis
+  and an optional bundled Prometheus/Grafana stack.
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
+keywords:
+  - feature-flags
+  - nestjs
+  - golang
+  - nats
+  - postgres
+  - redis
+home: https://github.com/Daniel-VergaraM/FlagForge
+maintainers:
+  - name: Daniel Vergara
+sources:
+  - https://github.com/Daniel-VergaraM/FlagForge

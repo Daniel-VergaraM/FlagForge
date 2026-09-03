@@ -1,0 +1,220 @@
+{{/*
+Design note: docker-compose's nginx.conf routed everything through a single
+host with path-prefix rewrites (/api/ -> api:3001/, /evaluate -> evaluator:
+3002/evaluate, ...). In Kubernetes we use subdomain-per-service Ingress
+objects instead - it avoids fragile rewrite-target regexes entirely, and
+critically lets us attach *different* ingress-nginx annotations per service
+(buffering/timeouts), since those annotations apply per-Ingress-resource,
+not per-path within one Ingress. See README "Design trade-offs".
+*/}}
+{{- if .Values.ingress.enabled }}
+{{- $root := . }}
+{{- $tlsSecret := .Values.ingress.tls.secretName }}
+{{- $baseAnnotations := .Values.ingress.annotations }}
+{{- if .Values.ingress.tls.clusterIssuer }}
+{{- $baseAnnotations = merge (dict "cert-manager.io/cluster-issuer" .Values.ingress.tls.clusterIssuer) $baseAnnotations }}
+{{- end }}
+
+{{- if .Values.web.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "web") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "web") | nindent 4 }}
+  annotations:
+    {{- toYaml $baseAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - app.{{ .Values.global.domain }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: app.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flagforge.componentName" (dict "root" . "component" "web") }}
+                port:
+                  number: {{ .Values.web.service.port }}
+{{- end }}
+
+{{- if .Values.api.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "api") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+  annotations:
+    {{- toYaml $baseAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - api.{{ .Values.global.domain }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: api.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flagforge.componentName" (dict "root" . "component" "api") }}
+                port:
+                  number: {{ .Values.api.service.port }}
+{{- end }}
+
+{{- if .Values.evaluator.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+  # The evaluator's /evaluate/stream endpoint is Server-Sent Events: a
+  # long-lived connection that must not be buffered or timed out early by
+  # the ingress controller, or clients stop receiving config-change pushes.
+  {{- $evaluatorAnnotations := merge (dict "nginx.ingress.kubernetes.io/proxy-buffering" "off" "nginx.ingress.kubernetes.io/proxy-read-timeout" "3600" "nginx.ingress.kubernetes.io/proxy-send-timeout" "3600") $baseAnnotations }}
+  annotations:
+    {{- toYaml $evaluatorAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - evaluate.{{ .Values.global.domain }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: evaluate.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+                port:
+                  number: {{ .Values.evaluator.service.port }}
+{{- end }}
+
+{{- if .Values.ingress.exposeMetrics }}
+{{/*
+Off by default: /metrics is meant to be scraped in-cluster (ServiceMonitor
+below). Enabling this exposes Prometheus text-format metrics to the public
+internet on their own dedicated Ingress objects, kept separate from
+business traffic so it can be dropped/protected independently.
+*/}}
+{{- if .Values.api.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "api") }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+  annotations:
+    {{- toYaml $baseAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - api.{{ .Values.global.domain }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: api.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "flagforge.componentName" (dict "root" . "component" "api") }}
+                port:
+                  number: {{ .Values.api.service.port }}
+{{- end }}
+{{- if .Values.evaluator.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+  annotations:
+    {{- toYaml $baseAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - evaluate.{{ .Values.global.domain }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: evaluate.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+                port:
+                  number: {{ .Values.evaluator.service.port }}
+{{- end }}
+{{- end }}
+
+{{- if and .Values.monitoring.standalone.enabled .Values.monitoring.standalone.grafana.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "grafana") | nindent 4 }}
+  annotations:
+    {{- toYaml $baseAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - monitoring.{{ .Values.global.domain }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: monitoring.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}
+                port:
+                  number: 3000
+{{- end }}
+{{- end }}

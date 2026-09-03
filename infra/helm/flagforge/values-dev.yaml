@@ -1,0 +1,137 @@
+# Overrides for a local cluster (kind or minikube) - see README "Local
+# cluster setup". Goal: fit comfortably on a laptop-sized single-node
+# cluster and be fast to iterate on, not to mirror production sizing.
+#
+# Usage:
+#   helm install flagforge ./infra/helm/flagforge -f values-dev.yaml
+
+global:
+  domain: flagforge.local
+  # kind/minikube load locally-built images straight into the node's
+  # containerd/docker (`kind load docker-image` / `minikube image load`) -
+  # there's no registry to pull from, so never try to re-pull.
+  imagePullPolicy: Never
+  # kind ships a default StorageClass named "standard" (local-path-provisioner);
+  # minikube's default is literally called "standard" too. Leave as-is for
+  # either. Override if your local cluster names it differently.
+  storageClass: standard
+
+api:
+  replicaCount: 1
+  image:
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+
+evaluator:
+  replicaCount: 1
+  image:
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
+  autoscaling:
+    # A single-node kind/minikube cluster has little to autoscale onto, and
+    # the metrics-server addon isn't enabled by default - flip this on after
+    # `minikube addons enable metrics-server` (or installing metrics-server
+    # on kind) if you want to see the HPA actually move. See README.
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+  podDisruptionBudget:
+    enabled: false
+
+web:
+  replicaCount: 1
+  image:
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  podDisruptionBudget:
+    enabled: false
+
+postgres:
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+redis:
+  persistence:
+    size: 256Mi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+nats:
+  jetstream:
+    persistence:
+      size: 256Mi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi
+
+ingress:
+  # No cert-manager on a local cluster by default - plain HTTP is fine for a
+  # demo. NEXTAUTH_URL / NextAuth cookie settings derive from this flag, so
+  # flipping it is enough (no other change needed).
+  tls:
+    enabled: false
+  exposeMetrics: true # convenient for poking at /metrics with curl locally
+
+networkPolicy:
+  # kind's default CNI (kindnet) and a plain `minikube start` do NOT enforce
+  # NetworkPolicy - the resources would apply cleanly but silently do
+  # nothing, which is worse than not creating them (false sense of
+  # isolation). Enable this only if your local cluster runs a policy-aware
+  # CNI (e.g. `minikube start --cni=calico`, or a kind cluster with Calico
+  # installed) - see README "NetworkPolicy caveat on local clusters".
+  enabled: false
+
+monitoring:
+  # No Prometheus Operator on a bare local cluster - use the bundled
+  # Prometheus + Grafana instead so `helm install` gives you working
+  # dashboards with zero extra setup.
+  standalone:
+    enabled: true
+    prometheus:
+      persistence:
+        enabled: false
+    grafana:
+      persistence:
+        enabled: false
+      ingress:
+        enabled: true
+  serviceMonitor:
+    enabled: false

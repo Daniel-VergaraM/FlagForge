@@ -1,0 +1,93 @@
+{{- if .Values.nats.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "nats") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "nats") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "nats") | nindent 4 }}
+  ports:
+    - name: client
+      port: 4222
+      targetPort: 4222
+    - name: monitor
+      port: 8222
+      targetPort: 8222
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "nats") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "nats") | nindent 4 }}
+spec:
+  serviceName: {{ include "flagforge.componentName" (dict "root" . "component" "nats") }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "nats") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "flagforge.componentLabels" (dict "root" . "component" "nats") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "flagforge.serviceAccountName" (dict "root" . "component" "nats") }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: nats
+          image: {{ include "flagforge.image" (dict "root" . "repository" .Values.nats.image.repository "tag" .Values.nats.image.tag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args: ["-js", "-m", "8222", "-sd", "/data"]
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: monitor
+              containerPort: 8222
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.nats.resources | nindent 12 }}
+  {{- if .Values.nats.jetstream.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- $sc := .Values.nats.jetstream.persistence.storageClass | default .Values.global.storageClass }}
+        {{- if $sc }}
+        storageClassName: {{ $sc }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.nats.jetstream.persistence.size }}
+  {{- else }}
+      volumes:
+        - name: data
+          emptyDir: {}
+  {{- end }}
+{{- end }}

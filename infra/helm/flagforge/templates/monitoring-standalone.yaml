@@ -1,0 +1,292 @@
+{{/*
+Self-contained Prometheus + Grafana, mirroring the docker-compose containers
+1:1, for clusters with no Prometheus Operator (kind/minikube demos). Not
+meant for real production - it's a single unclustered Prometheus with no
+long-term storage strategy and a single Grafana replica. Prefer
+monitoring.serviceMonitor + an operator-managed stack there. See README.
+*/}}
+{{- if .Values.monitoring.standalone.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "prometheus") | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      - job_name: 'flagforge-api'
+        static_configs:
+          - targets: ['{{ include "flagforge.componentName" (dict "root" . "component" "api") }}:{{ .Values.api.service.port }}']
+        metrics_path: /metrics
+        scrape_interval: 10s
+      - job_name: 'flagforge-evaluator'
+        static_configs:
+          - targets: ['{{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}:{{ .Values.evaluator.service.port }}']
+        metrics_path: /metrics
+        scrape_interval: 10s
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "prometheus") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "prometheus") | nindent 4 }}
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "prometheus") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "prometheus") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "flagforge.componentLabels" (dict "root" . "component" "prometheus") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "flagforge.serviceAccountName" (dict "root" . "component" "prometheus") }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: prometheus
+          image: "{{ .Values.monitoring.standalone.prometheus.image.repository }}:{{ .Values.monitoring.standalone.prometheus.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ .Values.monitoring.standalone.prometheus.retention }}
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+          resources:
+            {{- toYaml .Values.monitoring.standalone.prometheus.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}-config
+        - name: data
+          {{- if .Values.monitoring.standalone.prometheus.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- if .Values.monitoring.standalone.prometheus.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "prometheus") | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- $sc := .Values.monitoring.standalone.prometheus.persistence.storageClass | default .Values.global.storageClass }}
+  {{- if $sc }}
+  storageClassName: {{ $sc }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.monitoring.standalone.prometheus.persistence.size }}
+{{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}-provisioning
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "grafana") | nindent 4 }}
+data:
+  datasource.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}:9090
+        isDefault: true
+        editable: false
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: 'FlagForge Dashboards'
+        orgId: 1
+        folder: 'FlagForge'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "grafana") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "grafana") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "grafana") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "grafana") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "flagforge.componentLabels" (dict "root" . "component" "grafana") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "flagforge.serviceAccountName" (dict "root" . "component" "grafana") }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: "{{ .Values.monitoring.standalone.grafana.image.repository }}:{{ .Values.monitoring.standalone.grafana.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            runAsUser: 472
+          envFrom:
+            - secretRef:
+                name: {{ include "flagforge.fullname" . }}-grafana
+          env:
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: "%(protocol)s://%(domain)s/"
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          volumeMounts:
+            - name: provisioning-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: provisioning-dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+            - name: data
+              mountPath: /var/lib/grafana
+          resources:
+            {{- toYaml .Values.monitoring.standalone.grafana.resources | nindent 12 }}
+      volumes:
+        - name: provisioning-datasources
+          configMap:
+            name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}-provisioning
+            items:
+              - key: datasource.yml
+                path: datasource.yml
+        - name: provisioning-dashboards
+          configMap:
+            name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}-provisioning
+            items:
+              - key: dashboards.yml
+                path: dashboards.yml
+        - name: dashboards
+          configMap:
+            name: {{ include "flagforge.fullname" . }}-dashboard-overview
+        - name: data
+          {{- if .Values.monitoring.standalone.grafana.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- if .Values.monitoring.standalone.grafana.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "grafana") | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- $sc := .Values.monitoring.standalone.grafana.persistence.storageClass | default .Values.global.storageClass }}
+  {{- if $sc }}
+  storageClassName: {{ $sc }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.monitoring.standalone.grafana.persistence.size }}
+{{- end }}
+{{- end }}

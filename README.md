@@ -20,7 +20,7 @@ Open-source feature flag platform with real-time control, enterprise-grade audit
 | SDKs | TypeScript (vanilla + React) |
 | Cache / PubSub | Redis + NATS |
 | Observability | Prometheus + Grafana + OpenTelemetry |
-| Infra | Docker Compose + NGINX |
+| Infra | Docker Compose + NGINX (local) · Kubernetes + Helm (see `infra/helm/flagforge`) |
 
 ## Local Setup (Docker Compose)
 
@@ -36,6 +36,18 @@ curl -k https://localhost/evaluate/stream   # Evaluator SSE
 ```
 
 > **Note:** On first run, the `api` service runs `prisma migrate deploy` (or `db push` fallback) to synchronize the database schema.
+
+## Kubernetes (Helm)
+
+For a production-shaped deployment (resource limits, HPA, health probes,
+NetworkPolicies, Ingress, ServiceMonitor/Grafana dashboards), see the Helm
+chart at [`infra/helm/flagforge`](./infra/helm/flagforge/README.md):
+
+```bash
+helm lint infra/helm/flagforge
+helm install flagforge infra/helm/flagforge -f infra/helm/flagforge/values-dev.yaml   # kind/minikube
+helm install flagforge infra/helm/flagforge -f infra/helm/flagforge/values-prod.yaml  # managed cluster
+```
 
 ## Main Endpoints (via NGINX)
 
@@ -125,7 +137,8 @@ FlagForge/
 ├── infra/
 │   ├── nginx/         # Reverse proxy with SSL and upstreams
 │   ├── prometheus/    # Scraping configuration
-│   └── grafana/       # Pre-configured dashboards
+│   ├── grafana/       # Pre-configured dashboards
+│   └── helm/flagforge/ # Kubernetes Helm chart (see its own README)
 ├── docker-compose.yml # Full stack with healthchecks
 └── pnpm-workspace.yaml
 ```

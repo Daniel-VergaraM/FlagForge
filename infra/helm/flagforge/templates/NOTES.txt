@@ -1,0 +1,53 @@
+FlagForge ({{ .Chart.AppVersion }}) has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Workloads:
+{{- if .Values.api.enabled }}
+  - API (NestJS):       {{ include "flagforge.componentName" (dict "root" . "component" "api") }}
+{{- end }}
+{{- if .Values.evaluator.enabled }}
+  - Evaluator (Go):      {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+{{- end }}
+{{- if .Values.web.enabled }}
+  - Web dashboard:       {{ include "flagforge.componentName" (dict "root" . "component" "web") }}
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress hosts (point them at your ingress controller's external IP, e.g. via
+/etc/hosts for kind/minikube - see README "Local cluster setup"):
+{{- if .Values.web.enabled }}
+  {{ ternary "https" "http" .Values.ingress.tls.enabled }}://app.{{ .Values.global.domain }}       dashboard
+{{- end }}
+{{- if .Values.api.enabled }}
+  {{ ternary "https" "http" .Values.ingress.tls.enabled }}://api.{{ .Values.global.domain }}       API + /api/docs (Swagger)
+{{- end }}
+{{- if .Values.evaluator.enabled }}
+  {{ ternary "https" "http" .Values.ingress.tls.enabled }}://evaluate.{{ .Values.global.domain }}  evaluator (/evaluate, /evaluate/stream)
+{{- end }}
+{{- if and .Values.monitoring.standalone.enabled .Values.monitoring.standalone.grafana.ingress.enabled }}
+  {{ ternary "https" "http" .Values.ingress.tls.enabled }}://monitoring.{{ .Values.global.domain }} Grafana
+{{- end }}
+{{- else }}
+
+Ingress is disabled. Reach services with:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "flagforge.componentName" (dict "root" . "component" "web") }} 3000:{{ .Values.web.service.port }}
+{{- end }}
+
+{{- if .Values.monitoring.standalone.enabled }}
+
+Grafana admin credentials:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "flagforge.fullname" . }}-grafana -o jsonpath='{.data.GF_SECURITY_ADMIN_USER}' | base64 -d; echo
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "flagforge.fullname" . }}-grafana -o jsonpath='{.data.GF_SECURITY_ADMIN_PASSWORD}' | base64 -d; echo
+{{- end }}
+
+{{- if not .Values.postgres.auth.existingSecret }}
+
+Postgres password (auto-generated if not set via postgres.auth.password):
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "flagforge.postgres.secretName" . }} -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d; echo
+{{- end }}
+
+Check rollout status:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+See infra/helm/flagforge/README.md for local-cluster setup, autoscaling behavior,
+and production secret-management guidance.

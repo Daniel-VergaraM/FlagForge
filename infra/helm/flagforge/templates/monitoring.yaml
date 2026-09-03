@@ -1,0 +1,77 @@
+{{/*
+Recommended production path: an existing Prometheus Operator install (e.g.
+kube-prometheus-stack) picks these ServiceMonitors up automatically, and its
+Grafana subchart's dashboard-sidecar auto-imports the dashboard ConfigMap
+below via the grafana_dashboard label. Enable monitoring.serviceMonitor and
+leave monitoring.standalone off in any cluster that already runs the
+operator. For clusters that don't (a bare kind/minikube demo), use
+monitoring.standalone instead - see monitoring-standalone.yaml.
+*/}}
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+{{- if .Values.api.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "api") }}
+  namespace: {{ .Values.monitoring.serviceMonitor.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+{{- end }}
+{{- if .Values.evaluator.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  namespace: {{ .Values.monitoring.serviceMonitor.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "evaluator") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      # Scraped more frequently than the API: this is the sub-50ms hot path,
+      # so we want tighter-resolution CPU/latency series for the HPA and for
+      # spotting a regression quickly.
+      interval: 10s
+{{- end }}
+{{- end }}
+
+{{- if .Values.monitoring.grafanaDashboard.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flagforge.fullname" . }}-dashboard-overview
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.labels" . | nindent 4 }}
+    {{ .Values.monitoring.grafanaDashboard.labelKey }}: {{ .Values.monitoring.grafanaDashboard.labelValue | quote }}
+data:
+  flagforge-overview.json: |
+    {{- (.Files.Get "files/dashboards/flagforge-overview.json" | fromJson).dashboard | toJson | nindent 4 }}
+{{- end }}

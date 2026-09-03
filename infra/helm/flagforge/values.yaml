@@ -1,0 +1,388 @@
+# Default values for flagforge.
+# This file holds the *baseline* every environment shares. values-dev.yaml and
+# values-prod.yaml only override what genuinely differs between environments
+# (replica counts, resource sizing, storage class, domain, feature toggles).
+
+global:
+  # Prefixed onto every image repository below, e.g. "ghcr.io/daniel-vergaram".
+  # Left empty so `helm install` works out of the box against Docker Hub-style
+  # local image names built with `docker build -t flagforge/api .`
+  imageRegistry: ""
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  # Base domain used to derive Ingress hosts (api.<domain>, app.<domain>, ...)
+  domain: flagforge.local
+  storageClass: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  # Nothing in this chart talks to the Kubernetes API, so we never mount a
+  # token even though every workload gets its own dedicated ServiceAccount
+  # (least privilege: no workload shares an identity with another, and none
+  # of them could call the API server even if compromised).
+  automount: false
+  annotations: {}
+
+networkPolicy:
+  # Default-deny ingress per namespace + explicit allow rules between the
+  # services that actually talk to each other. Disable only for local
+  # clusters whose CNI doesn't implement NetworkPolicy (e.g. plain kind
+  # without a policy-aware CNI installed).
+  enabled: true
+  # Namespace label used to recognize the ingress controller's namespace so
+  # NetworkPolicies can allow it in. ingress-nginx sets this by default.
+  ingressControllerNamespaceLabel: kubernetes.io/metadata.name
+  ingressControllerNamespaceValue: ingress-nginx
+  # Same idea for an externally installed kube-prometheus-stack allowed to
+  # scrape /metrics across the mesh.
+  monitoringNamespaceValue: monitoring
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+# -----------------------------------------------------------------------------
+# API (NestJS) - I/O-bound: most request time is spent awaiting Postgres,
+# Redis and NATS round-trips, not burning CPU. So it gets a *low* CPU request
+# (it's mostly idle/waiting) but a generous limit to absorb bursts (connection
+# storms, Prisma query spikes, JIT warmup) without being throttled mid-burst.
+# Memory is sized for the V8 heap + Prisma's connection pool + OTEL SDK.
+# -----------------------------------------------------------------------------
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: flagforge/api
+    tag: ""
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3001
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 750m
+      memory: 512Mi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 20
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  otel:
+    enabled: false
+    endpoint: "http://otel-collector.monitoring:4318/v1/traces"
+  extraEnv: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -----------------------------------------------------------------------------
+# Evaluator (Go) - CPU-bound and latency-critical: the whole product promise
+# is sub-50ms evaluation. requests == limits (Guaranteed QoS) so the kubelet
+# never throttles it via the CFS quota mid-evaluation and it's the last thing
+# evicted under node pressure. Memory footprint is tiny (in-memory rule cache
+# + Redis client), so it's sized generously relative to actual usage rather
+# than tightly, since starving it would be far more costly than the request.
+# -----------------------------------------------------------------------------
+evaluator:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: flagforge/evaluator
+    tag: ""
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3002
+  resources:
+    requests:
+      cpu: 250m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  # Tight periods/timeouts: with a <50ms latency budget we want to detect a
+  # degraded pod (and pull it from the Service endpoints via readiness) in
+  # seconds, not the ~30s a "default" probe config would take.
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 2
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    # CPU-bound service -> CPU utilization is a fair proxy for load. Kept
+    # relatively low (60%) because scale-up needs headroom to happen *before*
+    # CPU contention starts adding latency, not after.
+    targetCPUUtilizationPercentage: 60
+    # Optional richer signal: scale directly on the thing users feel
+    # (throughput/latency) instead of the proxy (CPU). Requires the
+    # Prometheus Adapter to be installed and exposing this metric from the
+    # evaluator's own Prometheus counters - disabled by default because it's
+    # an extra moving part most local/demo clusters won't have.
+    customMetrics:
+      enabled: false
+      metricName: flagforge_evaluator_requests_per_second
+      targetAverageValue: "500"
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  extraEnv: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -----------------------------------------------------------------------------
+# Web (Next.js dashboard) - I/O-bound SSR + NextAuth, similar profile to the
+# API but lighter (no DB pool of its own; it proxies to the API).
+# -----------------------------------------------------------------------------
+web:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: flagforge/web
+    tag: ""
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 75
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  nextAuth:
+    secret: "" # empty -> auto-generated and persisted in a Secret
+    url: ""     # empty -> derived from ingress.host / TLS setting
+  extraEnv: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# -----------------------------------------------------------------------------
+# PostgreSQL - the only genuinely stateful, write-heavy component. Deployed as
+# a single-replica StatefulSet (no built-in HA/replication here on purpose -
+# see README trade-offs: bundling Patroni/repmgr was out of scope for a
+# portfolio chart, and a managed cluster's DBaaS replaces this in prod).
+# -----------------------------------------------------------------------------
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  auth:
+    user: flagforge
+    database: flagforge
+    # Leave blank to auto-generate a random password on first install and
+    # persist it in the flagforge-postgres Secret across upgrades. Set to
+    # reference a pre-existing Secret in a real production deployment
+    # instead (see README "Secrets in production").
+    password: ""
+    existingSecret: ""
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# Redis - cache + evaluator hot path. AOF persistence on (matches
+# docker-compose's --appendonly yes) so a restart doesn't cold-start the
+# cache under the evaluator's latency budget.
+# -----------------------------------------------------------------------------
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# NATS - JetStream enabled for config-change pub/sub durability.
+# -----------------------------------------------------------------------------
+nats:
+  enabled: true
+  image:
+    repository: nats
+    tag: "2-alpine"
+  jetstream:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Ingress - replaces the docker-compose nginx reverse proxy. We deploy
+# *multiple* Ingress objects for the same host on purpose: ingress-nginx
+# annotations (buffering, timeouts) apply per-Ingress-resource, and the
+# evaluator's SSE stream needs `proxy-buffering: off` + long read timeouts
+# that would be wrong to apply to the rest of the traffic. See README.
+# -----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  tls:
+    enabled: true
+    secretName: flagforge-tls
+    # Set to a cert-manager ClusterIssuer name to get real certs instead of
+    # providing/self-signing secretName yourself.
+    clusterIssuer: ""
+  # /metrics and /evaluator-metrics are meant to be scraped in-cluster via
+  # the ServiceMonitor below, not exposed publicly. Flip on only for parity
+  # demos with the old docker-compose nginx.conf.
+  exposeMetrics: false
+
+# -----------------------------------------------------------------------------
+# Observability
+# -----------------------------------------------------------------------------
+monitoring:
+  # ServiceMonitor CRDs from the Prometheus Operator (e.g. kube-prometheus-
+  # stack). Enable this in any cluster that already has the operator - this
+  # is the recommended production path.
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 15s
+    labels: {}
+  # Grafana dashboard ConfigMap, labeled for the grafana-sidecar dashboard
+  # auto-import convention used by kube-prometheus-stack's Grafana subchart.
+  grafanaDashboard:
+    enabled: true
+    labelKey: grafana_dashboard
+    labelValue: "1"
+  # Bundled, lightweight Prometheus + Grafana - a self-contained monitoring
+  # path for kind/minikube demos that don't have kube-prometheus-stack
+  # installed. Mirrors the docker-compose prometheus/grafana containers.
+  # Disable this and use serviceMonitor.enabled instead for real clusters.
+  standalone:
+    enabled: false
+    prometheus:
+      image:
+        repository: prom/prometheus
+        tag: v2.50.0
+      retention: 6h
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      persistence:
+        enabled: false
+        size: 2Gi
+        storageClass: ""
+    grafana:
+      image:
+        repository: grafana/grafana
+        tag: "10.4.0"
+      adminUser: admin
+      adminPassword: "" # empty -> auto-generated, persisted in a Secret
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 300m
+          memory: 256Mi
+      persistence:
+        enabled: false
+        size: 1Gi
+        storageClass: ""
+      ingress:
+        enabled: false

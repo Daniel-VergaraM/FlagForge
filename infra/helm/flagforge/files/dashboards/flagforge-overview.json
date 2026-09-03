@@ -1,0 +1,130 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "flagforge-overview",
+    "title": "FlagForge Overview",
+    "tags": ["flagforge"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "API Request Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{method}} {{status}}"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": { "drawStyle": "line" }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "API p99 Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99 {{method}} {{path}}"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": { "drawStyle": "line" }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Evaluator Request Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(evaluator_requests_total[5m])",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": { "drawStyle": "line" }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Evaluator p99 Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, rate(evaluator_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": { "drawStyle": "line" }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Cache Hit/Miss Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(evaluator_cache_hits_total[5m])",
+            "legendFormat": "hits"
+          },
+          {
+            "expr": "rate(evaluator_cache_misses_total[5m])",
+            "legendFormat": "misses"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "custom": { "drawStyle": "line" }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Error Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{status=~\"5..\"}[5m])",
+            "legendFormat": "API 5xx"
+          },
+          {
+            "expr": "rate(evaluator_requests_total{status=\"500\"}[5m])",
+            "legendFormat": "Evaluator 5xx"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": { "drawStyle": "line" }
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true
+}

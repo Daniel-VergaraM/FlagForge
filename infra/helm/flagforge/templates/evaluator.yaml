@@ -1,0 +1,162 @@
+{{- if .Values.evaluator.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+spec:
+  type: {{ .Values.evaluator.service.type }}
+  selector:
+    {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.evaluator.service.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+spec:
+  {{- if not .Values.evaluator.autoscaling.enabled }}
+  replicas: {{ .Values.evaluator.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "evaluator") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Evaluator is on the hot path for every SDK evaluation - never drop
+      # below the configured replica count during a rollout.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "flagforge.serviceAccountName" (dict "root" . "component" "evaluator") }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: evaluator
+          image: {{ include "flagforge.image" (dict "root" . "repository" .Values.evaluator.image.repository "tag" .Values.evaluator.image.tag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3002
+          env:
+            - name: PORT
+              value: "3002"
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "flagforge.fullname" . }}-config
+                  # bare "host:port" - the Go redis client, unlike the API's
+                  # ioredis, does not accept a redis:// scheme.
+                  key: REDIS_ADDR
+            - name: NATS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "flagforge.fullname" . }}-config
+                  key: NATS_URL
+            {{- range $k, $v := .Values.evaluator.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.evaluator.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.evaluator.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.evaluator.resources | nindent 12 }}
+      {{- with .Values.evaluator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.evaluator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.evaluator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.evaluator.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  minReplicas: {{ .Values.evaluator.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.evaluator.autoscaling.maxReplicas }}
+  # Scale-up needs to happen well before CPU contention starts adding to the
+  # <50ms latency budget, so we react on a moderate utilization threshold
+  # rather than waiting until pods are saturated.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.evaluator.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if .Values.evaluator.autoscaling.customMetrics.enabled }}
+    # Requires the Prometheus Adapter (https://github.com/kubernetes-sigs/
+    # prometheus-adapter) installed and configured to expose this metric
+    # from the evaluator's own /metrics counters as a "Pods" custom metric.
+    # CPU alone is a proxy for load; this scales directly on throughput,
+    # which correlates more tightly with the sub-50ms latency SLA.
+    - type: Pods
+      pods:
+        metric:
+          name: {{ .Values.evaluator.autoscaling.customMetrics.metricName }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.evaluator.autoscaling.customMetrics.targetAverageValue | quote }}
+    {{- end }}
+---
+{{- end }}
+{{- if .Values.evaluator.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.evaluator.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "evaluator") | nindent 6 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,225 @@
+{{/*
+Basic network segmentation: default-deny ingress for every pod in the
+release, then narrow allow rules for the traffic that actually needs to
+flow (mirrors who-calls-whom in docker-compose's single flat network, but
+now enforced instead of implicit). Egress is intentionally left unrestricted
+(no egress policyTypes) - locking egress down too requires allow-listing DNS
+and every external endpoint (OTEL collector, image registry, etc.) which is
+easy to get subtly wrong and out of scope for a "basic" policy set; call out
+in README as the natural next step for a real production cluster.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.fullname" . }}-default-deny-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+{{- $monitoringFrom := list
+  (dict "namespaceSelector" (dict "matchLabels" (dict $.Values.networkPolicy.ingressControllerNamespaceLabel $.Values.networkPolicy.monitoringNamespaceValue)))
+  (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/component" "prometheus")))
+}}
+{{- $ingressControllerFrom := list
+  (dict "namespaceSelector" (dict "matchLabels" (dict $.Values.networkPolicy.ingressControllerNamespaceLabel $.Values.networkPolicy.ingressControllerNamespaceValue)))
+}}
+
+{{- if .Values.postgres.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "postgres") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "postgres") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "postgres") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "api") | nindent 14 }}
+      ports:
+        - port: 5432
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "redis") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "redis") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "redis") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "api") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "evaluator") | nindent 14 }}
+      ports:
+        - port: 6379
+{{- end }}
+
+{{- if .Values.nats.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "nats") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "nats") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "nats") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "api") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "evaluator") | nindent 14 }}
+      ports:
+        - port: 4222
+        - port: 8222
+{{- end }}
+
+{{- if .Values.api.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "api") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "web") | nindent 14 }}
+        {{- toYaml $ingressControllerFrom | nindent 8 }}
+        {{- toYaml $monitoringFrom | nindent 8 }}
+      ports:
+        - port: 3001
+{{- end }}
+
+{{- if .Values.evaluator.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "evaluator") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "evaluator") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "evaluator") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- toYaml $ingressControllerFrom | nindent 8 }}
+        {{- toYaml $monitoringFrom | nindent 8 }}
+      ports:
+        - port: 3002
+{{- end }}
+
+{{- if .Values.web.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "web") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- toYaml $ingressControllerFrom | nindent 8 }}
+      ports:
+        - port: 3000
+{{- end }}
+
+{{- if .Values.monitoring.standalone.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "prometheus") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "prometheus") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "prometheus") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "grafana") | nindent 14 }}
+        {{- toYaml $ingressControllerFrom | nindent 8 }}
+      ports:
+        - port: 9090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flagforge.componentName" (dict "root" . "component" "grafana") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "flagforge.componentLabels" (dict "root" . "component" "grafana") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flagforge.componentSelectorLabels" (dict "root" . "component" "grafana") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- toYaml $ingressControllerFrom | nindent 8 }}
+      ports:
+        - port: 3000
+{{- end }}
+{{- end }}
