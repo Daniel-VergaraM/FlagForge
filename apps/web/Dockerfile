@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
@@ -6,7 +6,7 @@ RUN npm install -g pnpm && pnpm install --frozen-lockfile
 COPY apps/web ./apps/web
 RUN cd apps/web && pnpm build
 
-FROM node:20-alpine
+FROM node:26-alpine
 WORKDIR /app
 COPY --from=builder /app/apps/web/.next ./.next
 COPY --from=builder /app/apps/web/package.json ./
