@@ -90,11 +90,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Image refs must be lowercase - github.repository_owner preserves
+      # case (e.g. "Daniel-VergaraM"), which docker/metadata-action silently
+      # lowercases for the build/push tags but Trivy's image-ref below does
+      # not, so it fails to parse the reference without this.
+      - name: Compute lowercase image namespace
+        id: image
+        run: echo "namespace=$(echo '${{ env.IMAGE_NAMESPACE }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-${{ matrix.component }}
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.namespace }}-${{ matrix.component }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -117,7 +125,7 @@ jobs:
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-${{ matrix.component }}:ci-scan
+          image-ref: ${{ env.REGISTRY }}/${{ steps.image.outputs.namespace }}-${{ matrix.component }}:ci-scan
           format: table
           severity: CRITICAL,HIGH
           exit-code: '1'
