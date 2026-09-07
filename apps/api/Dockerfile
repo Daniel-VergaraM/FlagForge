@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache openssl
 COPY package.json .
@@ -7,7 +7,7 @@ COPY . .
 RUN npx prisma generate
 RUN pnpm build
 
-FROM node:20-alpine
+FROM node:26-alpine
 WORKDIR /app
 RUN apk add --no-cache openssl
 COPY --from=builder /app/dist ./dist
