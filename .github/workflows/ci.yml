@@ -3,8 +3,16 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}/flagforge
 
 jobs:
   lint-and-test:
@@ -22,3 +30,98 @@ jobs:
       - run: pnpm --filter @flagforge/api prisma:generate
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm --filter @flagforge/sdk-js run --if-present test
+      # @flagforge/react imports @flagforge/sdk-js from its built dist/,
+      # not source - build it first or the react test suite fails to resolve
+      # the import (not enforced anywhere before now, since root `pnpm test`
+      # only ever ran the api package's tests).
+      - run: pnpm --filter @flagforge/sdk-js build
+      - run: pnpm --filter @flagforge/react run --if-present test
+
+  evaluator-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/evaluator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: apps/evaluator/go.sum
+      - run: go vet ./...
+      - run: go test ./... -race -cover
+
+  # Builds & scans every image on every push/PR (fast fail on a real
+  # vulnerability or a broken Dockerfile) but only *pushes* to GHCR from
+  # main or a version tag - PRs from forks don't have registry credentials
+  # and shouldn't be able to publish images anyway.
+  docker:
+    needs: [lint-and-test, evaluator-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - component: api
+            context: ./apps/api
+          - component: evaluator
+            context: ./apps/evaluator
+          - component: web
+            context: ./apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-${{ matrix.component }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=ci-scan,priority=1000
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}-${{ matrix.component }}:ci-scan
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
