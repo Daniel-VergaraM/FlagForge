@@ -6,6 +6,7 @@ RUN npm install -g pnpm@9 && pnpm install --ignore-scripts
 COPY . .
 RUN npx prisma generate
 RUN pnpm build
+RUN pnpm prune --prod
 
 FROM node:26-alpine
 WORKDIR /app

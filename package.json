@@ -26,5 +26,10 @@
     "@opentelemetry/sdk-node": "^0.218.0",
     "@opentelemetry/sdk-trace-node": "^2.11.0",
     "@opentelemetry/semantic-conventions": "^1.41.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "multer": "^2.3.0"
+    }
   }
 }
