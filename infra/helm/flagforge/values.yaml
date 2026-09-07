@@ -65,6 +65,10 @@ api:
   image:
     repository: flagforge/api
     tag: ""
+  # CORS allowlist for the API. Left empty, the chart derives it from the
+  # web Ingress host (app.<global.domain>) - see templates/configmap.yaml.
+  # Override only if the dashboard is served from a different origin.
+  corsOrigin: ""
   service:
     type: ClusterIP
     port: 80

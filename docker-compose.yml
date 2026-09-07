@@ -49,6 +49,7 @@ services:
       - DATABASE_URL=postgresql://flagforge:flagforge@postgres:5432/flagforge
       - REDIS_URL=redis://redis:6379
       - NATS_URL=nats://nats:4222
+      - CORS_ORIGIN=https://localhost
       - OTEL_ENABLED=true
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
       - OTEL_SERVICE_NAME=flagforge-api

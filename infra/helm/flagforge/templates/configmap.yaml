@@ -32,3 +32,8 @@ data:
   {{- $host := printf "app.%s" .Values.global.domain }}
   {{- $scheme := ternary "https" "http" .Values.ingress.tls.enabled }}
   NEXTAUTH_URL: {{ .Values.web.nextAuth.url | default (printf "%s://%s" $scheme $host) | quote }}
+  # The API is only ever called cross-origin by the dashboard (browser JS
+  # talking to app.<domain> -> api.<domain>); everything else goes through
+  # server-side rewrites (next.config.js) or in-cluster service calls, so the
+  # allowlist is just the web Ingress host.
+  CORS_ORIGIN: {{ .Values.api.corsOrigin | default (printf "%s://%s" $scheme $host) | quote }}
