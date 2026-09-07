@@ -15,7 +15,7 @@
     "db:seed": "pnpm --filter @flagforge/api prisma:seed"
   },
   "devDependencies": {
-    "pnpm": "^9.0.0"
+    "pnpm": "^12.3.4"
   },
   "dependencies": {
     "@opentelemetry/auto-instrumentations-node": "^0.76.0",
