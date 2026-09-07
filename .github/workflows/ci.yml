@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.24'
+          go-version: '1.27'
           cache-dependency-path: apps/evaluator/go.sum
       - run: go vet ./...
       - run: go test ./... -race -cover
@@ -67,10 +67,16 @@ jobs:
         include:
           - component: api
             context: ./apps/api
+            file: ./apps/api/Dockerfile
           - component: evaluator
             context: ./apps/evaluator
+            file: ./apps/evaluator/Dockerfile
+          # web's Dockerfile copies root-level pnpm-lock.yaml/pnpm-workspace.yaml
+          # (it's a monorepo build), so it needs the repo root as context - same
+          # as docker-compose.yml's `context: .` for this service.
           - component: web
-            context: ./apps/web
+            context: .
+            file: ./apps/web/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -101,6 +107,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: false
           load: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -121,6 +128,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha,scope=${{ matrix.component }}
