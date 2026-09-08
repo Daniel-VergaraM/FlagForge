@@ -65,15 +65,16 @@ jobs:
     strategy:
       matrix:
         include:
+          # api and web's Dockerfiles copy root-level pnpm-lock.yaml/
+          # pnpm-workspace.yaml (frozen-lockfile installs for reproducible,
+          # non-CVE-drifting builds), so both need the repo root as context -
+          # same as docker-compose.yml's `context: .` for these services.
           - component: api
-            context: ./apps/api
+            context: .
             file: ./apps/api/Dockerfile
           - component: evaluator
             context: ./apps/evaluator
             file: ./apps/evaluator/Dockerfile
-          # web's Dockerfile copies root-level pnpm-lock.yaml/pnpm-workspace.yaml
-          # (it's a monorepo build), so it needs the repo root as context - same
-          # as docker-compose.yml's `context: .` for this service.
           - component: web
             context: .
             file: ./apps/web/Dockerfile
