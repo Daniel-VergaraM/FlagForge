@@ -17,22 +17,13 @@
   "devDependencies": {
     "pnpm": "^9.0.0"
   },
-  "dependencies": {
-    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
-    "@opentelemetry/instrumentation-express": "^0.66.0",
-    "@opentelemetry/instrumentation-http": "^0.218.0",
-    "@opentelemetry/resources": "^2.11.0",
-    "@opentelemetry/sdk-node": "^0.218.0",
-    "@opentelemetry/sdk-trace-node": "^2.11.0",
-    "@opentelemetry/semantic-conventions": "^1.41.1"
-  },
   "pnpm": {
     "overrides": {
       "multer": "^2.3.0",
       "minimatch@9>brace-expansion": "^2.1.4",
       "js-yaml": "^4.3.1",
-      "lodash": "^4.18.0"
+      "lodash": "^4.18.0",
+      "rimraf@5>glob": "^10.5.0"
     }
   }
 }
