@@ -25,7 +25,13 @@ COPY --from=builder /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=builder /app/apps/web/.next ./apps/web/.next
 COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
 COPY --from=builder /app/apps/web/public ./apps/web/public
-RUN chown -R node:node /app
+# npm/npx/corepack ship in the base image but aren't used at runtime
+# (CMD calls the local next binary directly) - their vendored deps (tar,
+# ip-address, brace-expansion) trip the vulnerability scan with CVEs we
+# can't patch via our own lockfile, so drop them entirely.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+  && chown -R node:node /app
 USER node
 ENV NODE_ENV=production
 ENV PORT=3000
