@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@casl/ability": "^7.0.1",
-    "@casl/prisma": "^2.0.1",
+    "@casl/prisma": "^2.0.2",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",
     "@nestjs/core": "^10.3.0",
