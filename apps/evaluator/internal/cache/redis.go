@@ -142,6 +142,22 @@ func (c *RedisCache) DeleteFlag(sdkKey, flagKey string) error {
 	return c.client.Del(c.ctx, key).Err()
 }
 
+// AllowRequest implements a fixed-window rate limit shared across all
+// evaluator replicas via Redis INCR/EXPIRE. An in-memory-per-pod limiter
+// (the previous approach) silently stops enforcing the real limit once the
+// HPA scales past one replica, since each pod counts independently.
+func (c *RedisCache) AllowRequest(ip string, limit int, window time.Duration) (bool, error) {
+	key := "ratelimit:" + ip
+	count, err := c.client.Incr(c.ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+	if count == 1 {
+		c.client.Expire(c.ctx, key, window)
+	}
+	return count <= int64(limit), nil
+}
+
 // FlagConfig mirrors the flag structure cached by the API
 type FlagConfig struct {
 	Key               string        `json:"key"`
