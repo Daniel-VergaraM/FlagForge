@@ -167,6 +167,12 @@ pnpm build          # Build all packages
 - **Push via SSE**: Lighter than WebSockets for unidirectional (server → client) streaming. Works over HTTP/1.1 and NGINX without extra configuration.
 - **Docker Compose as source of truth**: The entire local stack runs in containers; no host dependencies except Docker.
 
+## Operations
+
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — local setup, pre-PR checks, security-sensitive areas.
+- [`RUNBOOK.md`](./RUNBOOK.md) — incident response (evaluator latency, Redis/NATS/Postgres outages, rollback, scaling, secret rotation).
+- [`CHANGELOG.md`](./CHANGELOG.md) — notable changes, following Keep a Changelog / SemVer.
+
 ## License
 
 This software is distributed under a **non-commercial use** license.
