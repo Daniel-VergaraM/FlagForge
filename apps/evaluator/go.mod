@@ -3,7 +3,7 @@ module github.com/daniel-vergaram/flagforge/evaluator
 go 1.25.0
 
 require (
-	github.com/alicebob/miniredis/v2 v2.39.0
+	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/gofiber/fiber/v2 v2.52.15
 	github.com/nats-io/nats.go v1.53.1
 	github.com/prometheus/client_golang v1.24.1
