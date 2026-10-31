@@ -27,6 +27,8 @@ jobs:
           node-version: 20
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
+      - name: Check Grafana dashboard copy is in sync
+        run: bash scripts/sync-grafana-dashboards.sh --check
       - run: pnpm --filter @flagforge/api prisma:generate
       - run: pnpm lint
       - run: pnpm test

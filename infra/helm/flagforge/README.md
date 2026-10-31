@@ -264,13 +264,15 @@ helm lint infra/helm/flagforge -f infra/helm/flagforge/values-prod.yaml
 helm template flagforge infra/helm/flagforge | kubectl apply --dry-run=client -f -
 ```
 
+The dashboards in `files/dashboards/` are a generated copy of
+`infra/grafana/dashboards/` (the docker-compose source of truth). Run
+`scripts/sync-grafana-dashboards.sh` after editing a dashboard there; CI runs
+the same script with `--check` and fails the build if the copy drifted.
+
 ## Known limitations / next steps
 
 - No Postgres/Redis/NATS HA (see trade-offs above) — fine for a portfolio
   demo, not for a real production SLA.
-- The Grafana dashboard JSON is duplicated between `infra/grafana/dashboards/`
-  (docker-compose) and `infra/helm/flagforge/files/dashboards/` (this chart);
-  a follow-up could generate the chart copy from the compose one in CI.
 - No egress NetworkPolicies (see trade-offs above).
 - OpenTelemetry export (`api.otel.enabled`) is off by default since no OTEL
   collector is bundled — point it at one once you deploy one.

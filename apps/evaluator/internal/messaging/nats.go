@@ -24,8 +24,27 @@ type FlagChangedEvent struct {
 }
 
 // NewNATSSubscriber connects to NATS and returns a subscriber instance.
+// Reconnection is handled natively by nats.go: RetryOnFailedConnect lets the
+// initial connect succeed (and keep retrying in the background) even if NATS
+// isn't reachable yet, and MaxReconnects(-1) means a connection drop after
+// startup is retried forever (every ReconnectWait, 2s) instead of giving up
+// after the default 60 attempts and requiring a pod restart.
 func NewNATSSubscriber(addr string, c *cache.RedisCache, mgr *stream.Manager) (*NATSSubscriber, error) {
-	nc, err := nats.Connect(addr, nats.Timeout(5*time.Second), nats.ReconnectWait(2*time.Second))
+	nc, err := nats.Connect(addr,
+		nats.Timeout(5*time.Second),
+		nats.ReconnectWait(2*time.Second),
+		nats.MaxReconnects(-1),
+		nats.RetryOnFailedConnect(true),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			log.Printf("nats: disconnected, will keep retrying: %v", err)
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			log.Printf("nats: reconnected to %s", nc.ConnectedUrl())
+		}),
+		nats.ClosedHandler(func(_ *nats.Conn) {
+			log.Printf("nats: connection closed, no further reconnect attempts")
+		}),
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -70,14 +70,14 @@ status code, and API request/Prisma query latency.
 
 - Symptom: editing a flag in the dashboard doesn't show up in `/evaluate`
   or push an SSE event, even though the Postgres write succeeded.
-- The evaluator's NATS subscription failing is logged at startup
-  (`nats subscribe init failed` / `nats subscribe error`) — check
-  `kubectl logs deploy/flagforge-evaluator` for that line.
+- The evaluator's NATS client reconnects automatically (nats.go native
+  `MaxReconnects(-1)` + `RetryOnFailedConnect`, 2s wait between attempts) and
+  resubscribes to `flag.changed` once the connection is restored — no manual
+  pod restart is needed. Disconnects and reconnects are logged
+  (`nats: disconnected, will keep retrying` / `nats: reconnected to ...`) —
+  check `kubectl logs deploy/flagforge-evaluator` for those lines.
 - Until NATS recovers, clients relying on SSE push won't see updates; the
-  React SDK's 30s polling fallback still converges eventually. There is no
-  automatic re-subscribe/backoff today — a NATS outage requires an evaluator
-  pod restart (`kubectl rollout restart deploy/flagforge-evaluator`) once
-  NATS is healthy again.
+  React SDK's 30s polling fallback still converges eventually.
 
 ### Postgres unavailable
 

@@ -40,8 +40,13 @@ curl http://nginx/api/health
 curl http://nginx/evaluate
 ```
 
-## Nota sobre base de datos
-El endpoint `/api/flags` devuelve 500 porque la tabla `flags` no existe en la base de datos (migraciones no ejecutadas). Esto es un problema separado del proxy.
+## Nota sobre base de datos (resuelta 2026-10-31)
+~~El endpoint `/api/flags` devuelve 500 porque la tabla `flags` no existe en la base de datos (migraciones no ejecutadas).~~
+Resuelto: `apps/api/entrypoint.sh` ahora ejecuta `prisma migrate deploy` (con fallback a
+`db push --accept-data-loss`) antes de arrancar `node dist/src/main`, y es el `CMD` de la
+imagen (`apps/api/Dockerfile:45`), por lo que corre tanto en Docker Compose como en el
+Helm chart (`infra/helm/flagforge/templates/api.yaml`, que no sobreescribe `command`/`args`).
+Ver también `README.md:38`.
 
 ## Comandos útiles
 ```bash
