@@ -11,6 +11,8 @@ overrides:
   body-parser: '^1.20.9'
   proxy-addr: '^2.0.8'
   systeminformation: '^5.33.16'
+  browserslist: '^4.28.7'
+  source-map-js: '^1.2.2'
 allowBuilds:
   pnpm: true
   '@nestjs/core': true
