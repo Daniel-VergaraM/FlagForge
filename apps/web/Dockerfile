@@ -2,7 +2,7 @@ FROM node:26.12.1-alpine AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
-RUN npm install -g pnpm@9 && pnpm install --frozen-lockfile --ignore-scripts
+RUN npm install -g pnpm@12 && pnpm install --frozen-lockfile --ignore-scripts
 COPY apps/web ./apps/web
 RUN cd apps/web && pnpm build
 # `pnpm prune` has no --filter/recursive support, so it must run at the

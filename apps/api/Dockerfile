@@ -7,7 +7,7 @@ RUN apk add --no-cache openssl
 # reintroducing CVEs already patched in the workspace lockfile.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
-RUN npm install -g pnpm@9 && pnpm install --frozen-lockfile --ignore-scripts
+RUN npm install -g pnpm@12 && pnpm install --frozen-lockfile --ignore-scripts
 COPY apps/api ./apps/api
 RUN cd apps/api && npx prisma generate
 RUN cd apps/api && pnpm build
