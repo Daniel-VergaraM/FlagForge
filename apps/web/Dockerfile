@@ -1,4 +1,4 @@
-FROM node:26-alpine AS builder
+FROM node:26.12.1-alpine AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
@@ -10,7 +10,7 @@ RUN cd apps/web && pnpm build
 # pnpm otherwise shows outside a real TTY.
 RUN CI=true pnpm prune --prod
 
-FROM node:26-alpine
+FROM node:26.12.1-alpine
 WORKDIR /app
 # libcrypto3 (and other alpine packages) can lag behind their fixed
 # version even on the "latest" tag if a build reuses a cached base layer.

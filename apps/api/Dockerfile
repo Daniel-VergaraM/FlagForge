@@ -1,4 +1,4 @@
-FROM node:26-alpine AS builder
+FROM node:26.12.1-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache openssl
 # Root-level lockfile is required to install the exact resolved versions
@@ -16,7 +16,7 @@ RUN cd apps/api && pnpm build
 # pnpm otherwise shows outside a real TTY.
 RUN CI=true pnpm prune --prod
 
-FROM node:26-alpine
+FROM node:26.12.1-alpine
 WORKDIR /app
 RUN apk add --no-cache openssl
 # pnpm's isolated linker only symlinks a package's own dependencies into
